@@ -50,6 +50,9 @@ class FIS:
         return s
 
 
+    def __repr__(self):
+        return ''.join(['{}:{}\n'.format(k,v) for k,v in self.__dict__.iteritems()])
+
     def addvar(self,vartype,varname,varrange):
         if vartype in 'input':
             self.input.append(FuzzyVar(varname,varrange))

@@ -8,7 +8,6 @@ import sys
 sys.path.append('..')
 from yapflm import FIS
 from fisparse import FISParser
-import matplotlib.pyplot as plt
 
 myfis = FIS('myfis')
 myfis.addvar('input','x',[-0.5,1.5])
@@ -31,7 +30,8 @@ ya = list(map(lambda x: x**(0.45), x))
 yf = [myfis.evalfis(xx) for xx in x]
 
 
-
-plt.plot(x,ya,'b',x,yf,'g--')
-plt.legend(['x^.45',"Fuzzy Approx"],loc='best')
-plt.show()
+## Plot results
+#import matplotlib.pyplot as plt
+#plt.plot(x,ya,'b',x,yf,'g--')
+#plt.legend(['x^.45',"Fuzzy Approx"],loc='best')
+#plt.show()

@@ -21,9 +21,12 @@ class FIS(object):
                  'sum'      :   sum,
                  'prod'     :   prod}
                  
-    def __init__(self,name,fistype='mamdani',andMethod='min',orMethod='max',
-                  impMethod='min',aggMethod='max',defuzzMethod='centroid'):
-        self.defuzz =    {'centroid' :   self.defuzzCentroid} 
+    def __init__(self,name='',fistype='mamdani',andMethod='min',orMethod='max',
+                  impMethod='min',aggMethod='max',defuzzMethod='centroid',
+                  init = None):
+        self.defuzz =    {'centroid' :   self.defuzzCentroid}
+        if init is not None:
+            pass
         self.input,self.output = [],[]
         self.name = name
         self.type = fistype
@@ -53,7 +56,7 @@ class FIS(object):
 
     def encode(self):
         var = self.input + self.output
-        return sum((sum([mf.params for mf in v.mf],[]) for v in var),[])
+        return deque(sum((sum([mf.params for mf in v.mf],[]) for v in var),[]))
 
     def decode(self,encoded):
         var = self.input + self.output
@@ -69,7 +72,7 @@ class FIS(object):
         for var in self.input + self.output:
             for mf in var.mf:
                 out += sorted(random.uniform(*var.range) for p in mf.params)
-        return out
+        
 
     def addvar(self,vartype,varname,varrange):
         if vartype in 'input':

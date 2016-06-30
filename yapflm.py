@@ -7,6 +7,8 @@ Created on Thu Jun  9 08:25:34 2016
 from __future__ import division , print_function
 from math import exp
 from collections import deque
+from itertools import cycle
+from string import ascii_letters as let
 import random
   
 def prod(x):
@@ -15,15 +17,36 @@ def prod(x):
         y *= _
     return y
 
+def bitmaskarray(n,base=512,length=None):
+    retval = []
+    i = 1
+    while n >= base:
+        retval.append(n%base)
+        n //= base
+        i += 1
+    retval.append(n)
+    if length is not None:
+        retarray = [0]*length
+        retarray[:i] = retval
+        return retarray[::-1]
+    return retval[::-1]
+
+def storebits(a,shift=9):
+    retval = 0
+    for i,x in enumerate(a[::-1]):
+        retval += x * (shift**i)
+    return retval
+
 class FIS(object):
     oper =      {'max'      :   max,
                  'min'      :   min,
                  'sum'      :   sum,
                  'prod'     :   prod}
                  
-    def __init__(self,name,fistype='mamdani',andMethod='min',orMethod='max',
-                  impMethod='min',aggMethod='max',defuzzMethod='centroid'):
-        self.defuzz =    {'centroid' :   self.defuzzCentroid} 
+    def __init__(self,name='',fistype='mamdani',andMethod='min',orMethod='max',
+                  impMethod='min',aggMethod='max',defuzzMethod='centroid',
+                  init=None,inRange=None,outRange=None):
+        self.defuzz =    {'centroid' :   self.defuzzCentroid}
         self.input,self.output = [],[]
         self.name = name
         self.type = fistype
@@ -33,6 +56,30 @@ class FIS(object):
         self.aggMethod = aggMethod
         self.defuzzMethod = defuzzMethod
         self.rule = []
+        self._mfList = ['trimf','trapmf']
+        if init is not None:
+            self.init = [None]*4
+            if inRange is None or outRange is None:
+                r = (-1,1)
+                inRange, outRange = cycle([r]),cycle([r])
+                print("No range specified. Defaulting to [-1,1]")
+            else:
+                inRange = cycle(inRange)
+                outRange = cycle(outRange)
+            numInMFs = bitmaskarray(init[0],10)
+            typeInMFs = bitmaskarray(init[1],512,len(numInMFs))
+            for i,(inp,m) in enumerate(zip(numInMFs,typeInMFs)):
+                self.addvar('input','input%d'%i,inRange.next())
+                for j,mf in enumerate(bitmaskarray(m,2,inp)):
+                    self.input[-1].addmf('%s%d'%(let[j],i),self._mfList[mf])
+            numOutMFs = bitmaskarray(init[2],10)
+            typeOutMFs = bitmaskarray(init[3],512,len(numOutMFs))
+            for i,(outp,m) in enumerate(zip(numOutMFs,typeOutMFs)):
+                self.addvar('output','output%d'%i,outRange.next())
+                for j,mf in enumerate(bitmaskarray(m,2,outp)):
+                    self.output[-1].addmf('%s%d'%(let[j],i),self._mfList[mf])
+        else:
+            self.init = [None]*4
 
     def __str__(self):
         sys_atts = ['name','type','andMethod','orMethod',
@@ -50,35 +97,75 @@ class FIS(object):
         for rule in self.rule:
             s += rule.__str__('\t\t') + '\n'
         return s
+        
+    def config(self):
+        if len(self.input) == 0 or len(self.output) == 0:
+            return None
+        self.init = []
+        self.init.append(storebits([len(i.mf) for i in self.input],10))
+        self.init.append(storebits([storebits([self._mfList.index(mf.type) 
+                        for mf in inp.mf],2) for inp in self.input],512))
+        self.init.append(storebits([len(outp.mf) for outp in self.output],10))
+        self.init.append(storebits([storebits([self._mfList.index(mf.type) 
+                        for mf in outp.mf],2) for outp in self.output],512))
+        return self.init
+        
+    def copy(self,encoded=None):
+        inRanges = [inp.range for inp in self.input]
+        outRanges = [outp.range for outp in self.output]
+        retFIS = FIS(init=self.init,inRange=inRanges,outRange=outRanges)
+        if encoded is not None:
+            retFIS.decode(encoded)
+        else:
+            retFIS.decode(self.encode())
+        rules = [r.encode() for r in self.rule]
+        retFIS.addrule(rules)
+        return retFIS
 
     def encode(self):
         var = self.input + self.output
-        return sum((sum([mf.params for mf in v.mf],[]) for v in var),[])
+        return deque(sum((sum([mf.params for mf in v.mf],[]) for v in var),[]))
 
     def decode(self,encoded):
+        if not type(encoded) is deque:
+            encoded = deque(encoded)
         var = self.input + self.output
         num_mf = [len(v.mf) for v in var]
         for i,num_in in enumerate(num_mf):
             for mf in xrange(num_in):
                 params = var[i].mf[mf].params
-                params = [encoded.popleft() for _ in params] 
+                var[i].mf[mf].params = [encoded.popleft() for _ in params] 
 
-    def randomize(self):
+    def randomize(self,ret=False):
         # This only works for well-order param lists (like tri and trap)
-        out = []
+        out = deque()
         for var in self.input + self.output:
             for mf in var.mf:
-                out += sorted(random.uniform(*var.range) for p in mf.params)
-        return out
+                [out.append(x) for x in 
+                       sorted((random.uniform(*var.range) for p in mf.params))]
+        if ret:
+            return out
+        else:
+            return self.copy(out)
 
     def addvar(self,vartype,varname,varrange):
         if vartype in 'input':
-            self.input.append(FuzzyVar(varname,varrange))
+            if self.init[0] is None:
+                self.init[:2] = [0,0]
+            else:
+                self.init[0] *= 10
+                self.init[1] *= 512
+            self.input.append(FuzzyVar(varname,varrange,self,1))
             if len(self.rule) > 0:
                 for rule in self.rule:
                     rule.antecedent += [0]
         elif vartype in 'output':
-            self.output.append(FuzzyVar(varname,varrange))
+            if self.init[2] is None:
+                self.init[2:] = [0,0]
+            else:
+                self.init[2] *= 10
+                self.init[3] *= 512
+            self.output.append(FuzzyVar(varname,varrange,self,0))
             if len(self.rule) > 0:
                 for rule in self.rule:
                     rule.consequent += [0]
@@ -178,10 +265,16 @@ class FIS(object):
         return totmom/totarea
 
 class FuzzyVar(object):
-    def __init__(self,varname,varrange):
+    def __init__(self,varname,varrange,parent=None,vartype=None):
         self.name = varname
         self.range = varrange
         self.mf = []
+        self.parent = parent
+        if vartype:
+            self.num = len(parent.input)
+        elif vartype == 0:
+            self.num = len(parent.output)
+        self.vartype = vartype
 
     def __str__(self,indent=''):
         var_atts = ['name','range']
@@ -193,16 +286,36 @@ class FuzzyVar(object):
             s += mf.__str__(indent+'\t') + '\n'
         return s
         
-    def addmf(self,mfname,mftype,mfparams):
+    def addmf(self,mfname,mftype,mfparams=None):
         mf = MF(mfname,mftype,mfparams)
         mf.range = self.range
+        mftypes = {'trimf':0, 'trapmf':1}
         self.mf.append(mf)
+        if self.vartype is None:
+            return
+        elif self.vartype:
+            numIn = len(self.parent.input)
+            self.parent.init[0] += 10**(numIn - self.num - 1)
+            
+            typeMFs = bitmaskarray(self.parent.init[1])
+            if len(typeMFs) <= numIn:
+                typeMFs = [0]*(numIn-len(typeMFs)) + typeMFs
+            typeMFs[self.num] = (typeMFs[self.num]<<1) + mftypes[mftype]
+            self.parent.init[1] = storebits(typeMFs)
+        else:
+            numOut = len(self.parent.output)
+            self.parent.init[2] += 10**(numOut - self.num - 1)
+            
+            typeMFs = bitmaskarray(self.parent.init[1])
+            if len(typeMFs) <= numOut:
+                typeMFs = [0]*(numOut-len(typeMFs)) + typeMFs
+            typeMFs[self.num] = (typeMFs[self.num]<<1) + mftypes[mftype]
+            self.parent.init[3] = storebits(typeMFs)
 
 class MF(object):
-    def __init__(self,mfname,mftype,mfparams):
+    def __init__(self,mfname,mftype,mfparams=None):
         self.name = mfname
         self.type = mftype
-        self.params = mfparams
         
         mfdict = {'trimf'           :   (self.mfTriangle,3),
                   'trapmf'          :   (self.mfTrapezoid,4),
@@ -212,12 +325,16 @@ class MF(object):
                   'trunctrirlmf'    :   (self.mfTruncTriRightLower,4),
                   'gaussmf'         :   (self.mfGaussian,2),
                   'gauss2mf'        :   (self.mfGaussian2,2)}
+        
+        self.mf = mfdict[self.type][0]
+        if mfparams is not None:
+            self.params = mfparams
+        else:
+            self.params = [0]*mfdict[self.type][1]
         if not mfdict[self.type][1] == len(self.params):
             #Throw invalid param number exception
             pass
-        
-        self.mf = mfdict[self.type][0]
-        
+
     def __str__(self,indent=''):
         mf_atts = ['name','type','params']
         s = ''
@@ -367,5 +484,6 @@ class Rule(object):
         a = tuple(self.antecedent) + tuple(self.consequent) + \
                                      (self.weight,self.connection,)
         return indent + s.format(*a)
-
-
+    
+    def encode(self):
+        return self.antecedent + self.consequent + [self.weight, self.connection]

@@ -7,7 +7,7 @@ Created on Thu Jun  9 08:25:34 2016
 from __future__ import division , print_function
 from math import exp
 from collections import deque
-from itertools import cycle
+from itertools import cycle, product
 from string import ascii_letters as let
 import random
   
@@ -45,7 +45,7 @@ class FIS(object):
                  
     def __init__(self,name='',fistype='mamdani',andMethod='min',orMethod='max',
                   impMethod='min',aggMethod='max',defuzzMethod='centroid',
-                  init=None,inRange=None,outRange=None):
+                  init=None,inRange=None,outRange=None,rules=None):
         self.defuzz =    {'centroid' :   self.defuzzCentroid}
         self.input,self.output = [],[]
         self.name = name
@@ -64,8 +64,8 @@ class FIS(object):
                 inRange, outRange = cycle([r]),cycle([r])
                 print("No range specified. Defaulting to [-1,1]")
             else:
-                inRange = cycle(inRange)
-                outRange = cycle(outRange)
+                inRange = cycle((inRange,))
+                outRange = cycle((outRange,))
             numInMFs = bitmaskarray(init[0],10)
             typeInMFs = bitmaskarray(init[1],512,len(numInMFs))
             for i,(inp,m) in enumerate(zip(numInMFs,typeInMFs)):
@@ -78,6 +78,10 @@ class FIS(object):
                 self.addvar('output','output%d'%i,outRange.next())
                 for j,mf in enumerate(bitmaskarray(m,2,outp)):
                     self.output[-1].addmf('%s%d'%(let[j],i),self._mfList[mf])
+            if rules:
+                self.addrule(rules)
+            else:
+                self.addrule(self.fillBase(numInMFs,numOutMFs))
         else:
             self.init = [None]*4
 
@@ -200,6 +204,22 @@ class FIS(object):
             #Throw an invalid variable type exception
             pass
 
+    def _flatten(self,nested_iter):
+        for i in nested_iter:
+            if hasattr(i,'__iter__'):
+                for j in self._flatten(i):
+                    yield j
+            else:
+                yield i
+
+    def ruleGen(self,mfs):
+        ranges = map(range,mfs)
+        return [list(self._flatten(x)) for x in reduce(product,ranges)]
+
+    def fillBase(self,ins,outs):
+        args = self.ruleGen(ins+outs)
+        return [arg+[1,0] for arg in args]
+
     def addrule(self,rules):
         numInput = len(self.input)
         numOutput = len(self.output)
@@ -287,7 +307,7 @@ class FuzzyVar(object):
         return s
         
     def addmf(self,mfname,mftype,mfparams=None):
-        mf = MF(mfname,mftype,mfparams)
+        mf = MF(mfname,mftype,mfparams,self)
         mf.range = self.range
         mftypes = {'trimf':0, 'trapmf':1}
         self.mf.append(mf)
@@ -313,7 +333,7 @@ class FuzzyVar(object):
             self.parent.init[3] = storebits(typeMFs)
 
 class MF(object):
-    def __init__(self,mfname,mftype,mfparams=None):
+    def __init__(self,mfname,mftype,mfparams=None,parent=None):
         self.name = mfname
         self.type = mftype
         
@@ -329,6 +349,11 @@ class MF(object):
         self.mf = mfdict[self.type][0]
         if mfparams is not None:
             self.params = mfparams
+        elif parent is not None:
+            r = parent.range[1] - parent.range[0]
+            p = mfdict[self.type][1]
+            dr = r/(p-1)
+            self.params = [parent.range[0]+i*dr for i in xrange(p)]
         else:
             self.params = [0]*mfdict[self.type][1]
         if not mfdict[self.type][1] == len(self.params):

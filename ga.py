@@ -45,5 +45,9 @@ class GA(object):
         self.fitness_fn = function
     
     def crossover(self,ind1,ind2):
-        parents = random.sample(self.parents)
+        #stuff
+        try:
+            child = parent[0].replicate(encoded)
+        except ParamError as e:
+            raise a
         

@@ -72,13 +72,19 @@ class FIS(object):
             for i,(inp,m) in enumerate(zip(self.numInMFs,typeInMFs)):
                 self.addvar('input','input%d'%i,inRange.next())
                 for j,mf in enumerate(bitmaskarray(m,2,inp)):
-                    self.input[-1].addmf('%s%d'%(let[j],i),self._mfList[mf])
+                    try:
+                        self.input[-1].addmf('%s%d'%(let[j],i),self._mfList[mf])
+                    except ParamError as e:
+                        print("ParamError: {0}".format(e))
             self.numOutMFs = bitmaskarray(init[2],10)
             typeOutMFs = bitmaskarray(init[3],512,len(self.numOutMFs))
             for i,(outp,m) in enumerate(zip(self.numOutMFs,typeOutMFs)):
                 self.addvar('output','output%d'%i,outRange.next())
                 for j,mf in enumerate(bitmaskarray(m,2,outp)):
-                    self.output[-1].addmf('%s%d'%(let[j],i),self._mfList[mf])
+                    try:
+                        self.output[-1].addmf('%s%d'%(let[j],i),self._mfList[mf])
+                    except ParamError as e:
+                        print("ParamError: {0}".format(e))
             if rules:
                 self.addrule(rules)
                 if rule_options and rule_selection:
@@ -123,7 +129,10 @@ class FIS(object):
     
     def __eq__(self,other):
         return self.__dict__ == other.__dict__
-        
+    
+    def check(self):
+        return all(var.check for var in [self.inputs + self.outputs])
+    
     def config(self):
         if len(self.input) == 0 or len(self.output) == 0:
             return None
@@ -152,7 +161,7 @@ class FIS(object):
             rule_selection = retFIS.decode(encoded)
         else:
             retFIS.decode(self.encode())
-        return retFIS
+        return retFIS,self.check()
 
     def encode(self,rule=True):
         var = self.input + self.output
@@ -362,7 +371,10 @@ class FuzzyVar(object):
         return local_dict == other_dict
         
     def addmf(self,mfname,mftype,mfparams=None):
-        mf = MF(mfname,mftype,mfparams,self)
+        try:
+            mf = MF(mfname,mftype,mfparams,self)
+        except ParamError as e:
+            raise e
         mf.range = self.range
         mftypes = {'trimf':0, 'trapmf':1}
         self.mf.append(mf)
@@ -388,7 +400,7 @@ class FuzzyVar(object):
             self.parent.init[3] = storebits(typeMFs)
 
 class MF(object):
-    def __init__(self,mfname,mftype,mfparams=None,parent=None):
+    def __init__(self,mfname,mftype,mfparams,parent=None):
         self.name = mfname
         self.type = mftype
         
@@ -402,6 +414,11 @@ class MF(object):
                   'gauss2mf'        :   (mfGaussian2,2)}
         
         self.mf = mfdict[self.type][0]
+        try:
+            self.mf(None,mfparams)
+#            self.params = mfparams
+        except ParamError as e:
+            raise e
         if mfparams is not None:
             self.params = mfparams
         elif parent is not None:
@@ -413,6 +430,7 @@ class MF(object):
             self.params = [0]*mfdict[self.type][1]
         if not mfdict[self.type][1] == len(self.params):
             #Throw invalid param number exception
+            raise(Exception)
             pass
 
     def __str__(self,indent=''):
@@ -423,7 +441,11 @@ class MF(object):
         return s
     
     def __eq__(self,other):
-        return self.__dict__ == other.__dict__
+        local_dict = self.__dict__.copy()
+        other_dict = other.__dict__.copy()
+        local_dict.pop('parent')
+        other_dict.pop('parent')
+        return local_dict == other_dict
 
     def evalmf(self,x):
         return self.mf(x,self.params)
@@ -466,44 +488,55 @@ class Rule(object):
 
 def mfTriangle(x,params):
     a,b,c = params
-    check = [b<a,c<b,a==b,b==c,a<=x<=c]
-    if any(check[:2]):
-        #Throw an invalid param exception
-        pass
-    if not check[4]:
+    check = [a==b,b==c,a<=x<=c]
+    if x is None:
+        err = [b<a,c<b]
+        if any(err):
+            #Throw an invalid param exception
+            errs = ['b<a','c<b']
+            e = [errs[i] for i,_ in enumerate(err) if _]
+            raise ParamError(params,'Invalid params {}: {}'.format(e,params))
+    if not check[2]:
 #        print('outside of range')
         return 0
-    if check[2]:
+    if check[0]:
         return (c-x)/(c-b)
-    elif check[3]:
+    elif check[1]:
         return (x-a)/(b-a)
     else:
         return min((x-a)/(b-a),(c-x)/(c-b))
         
 def mfTrapezoid(x,params):
     a,b,c,d = params
-    check = [b<a,c<b,d<c,a==b,b==c,c==d,a<=x<=d]
-    if any(check[:3]):
-        #Throw an invalid param exception
-        pass
-    if not check[6]:
+    check = [a==b,b==c,c==d,a<=x<=d]
+    if x is None:
+        err = [b<a,c<b,d<c]
+        if any(err):
+            #Throw an invalid param exception
+            errs = ['b<a','c<b','d<c']
+            e = [errs[i] for i,_ in enumerate(err) if _]
+            raise ParamError(params,'Invalid params {}: {}'.format(e,params))
+    if not check[3]:
 #            print('outside of range')
         return 0
-    if check[4]:
+    if check[1]:
         return mfTriangle(x,[a,b,d])
-    if check[3]:
+    if check[0]:
         return min(1,(d-x)/(d-c))
-    if check[5]:
+    if check[2]:
         return min((x-a)/(b-a),1)
     else:
         return min((x-a)/(b-a),1,(d-x)/(d-c))
 
 def mfTruncTriLeftUpper(x,params):
     a,b,c,d = params
-    check = [b<a,c<b,d<c]
-    if any(check):
-        #Throw an inalid parameter exception
-        pass
+    if x is None:
+        err = [b<a,c<b,d<c]
+        if any(err):
+            #Throw an invalid param exception
+            errs = ['b<a','c<b','d<c']
+            e = [errs[i] for i,_ in enumerate(err) if _]
+            raise ParamError(params,'Invalid params {}: {}'.format(e,params))
     if x<=c:
         return 1
     else:
@@ -511,10 +544,13 @@ def mfTruncTriLeftUpper(x,params):
 
 def mfTruncTriLeftLower(x,params):
     a,b,c,d = params
-    check = [b<a,c<b,d<c]
-    if any(check):
-        #Throw an inalid parameter exception
-        pass
+    if x is None:
+        err = [b<a,c<b,d<c]
+        if any(err):
+            #Throw an invalid param exception
+            errs = ['b<a','c<b','d<c']
+            e = [errs[i] for i,_ in enumerate(err) if _]
+            raise ParamError(params,'Invalid params {}: {}'.format(e,params))
     if x<=b:
         return 0
     else:
@@ -522,10 +558,13 @@ def mfTruncTriLeftLower(x,params):
 
 def mfTruncTriRightUpper(x,params):
     a,b,c,d = params
-    check = [b<a,c<b,d<c]
-    if any(check):
-        #Throw an inalid parameter exception
-        pass
+    if x is None:
+        err = [b<a,c<b,d<c]
+        if any(err):
+            #Throw an invalid param exception
+            errs = ['b<a','c<b','d<c']
+            e = [errs[i] for i,_ in enumerate(err) if _]
+            raise ParamError(params,'Invalid params {}: {}'.format(e,params))
     if x>=b:
         return 1
     else:
@@ -533,10 +572,13 @@ def mfTruncTriRightUpper(x,params):
 
 def mfTruncTriRightLower(x,params):
     a,b,c,d = params
-    check = [b<a,c<b,d<c]
-    if any(check):
-        #Throw an inalid parameter exception
-        pass
+    if x is None:
+        err = [b<a,c<b,d<c]
+        if any(err):
+            #Throw an invalid param exception
+            errs = ['b<a','c<b','d<c']
+            e = [errs[i] for i,_ in enumerate(err) if _]
+            raise ParamError(params,'Invalid params {}: {}'.format(e,params))
     if x>=c:
         return 0
     else:
@@ -565,3 +607,13 @@ def defuzzCentroid(agg,outrange):
     for i,y in enumerate(agg):
         totmom += y*(a + i*dx)
     return totmom/totarea
+
+class Error(Exception):
+    pass
+
+class ParamError(Error):
+    def __init__(self,params,msg):
+        self.params = params
+        self.msg = msg
+    def __str__(self):
+        return repr(self.msg)

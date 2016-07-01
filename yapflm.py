@@ -47,7 +47,7 @@ class FIS(object):
                   impMethod='min',aggMethod='max',defuzzMethod='centroid',
                   init=None,inRange=None,outRange=None,
                   rules=None,rule_options=None,rule_selection=None):
-        self.defuzz =    {'centroid' :   self.defuzzCentroid}
+        self.defuzz =    {'centroid' :   defuzzCentroid}
         self.input,self.output = [],[]
         self.name = name
         self.type = fistype
@@ -63,21 +63,19 @@ class FIS(object):
             if inRange is None or outRange is None:
                 r = (-1,1)
                 inRange, outRange = cycle([r]),cycle([r])
-                print("No range specified. Defaulting to [-1,1]")
+#                print("No range specified. Defaulting to [-1,1]")
             else:
                 inRange = cycle(inRange)
                 outRange = cycle(outRange)
-            numInMFs = bitmaskarray(init[0],10)
-            typeInMFs = bitmaskarray(init[1],512,len(numInMFs))
-#            init[:2] = [None]*2
-            for i,(inp,m) in enumerate(zip(numInMFs,typeInMFs)):
+            self.numInMFs = bitmaskarray(init[0],10)
+            typeInMFs = bitmaskarray(init[1],512,len(self.numInMFs))
+            for i,(inp,m) in enumerate(zip(self.numInMFs,typeInMFs)):
                 self.addvar('input','input%d'%i,inRange.next())
                 for j,mf in enumerate(bitmaskarray(m,2,inp)):
                     self.input[-1].addmf('%s%d'%(let[j],i),self._mfList[mf])
-            numOutMFs = bitmaskarray(init[2],10)
-            typeOutMFs = bitmaskarray(init[3],512,len(numOutMFs))
-#            init[2:] = [None]*2
-            for i,(outp,m) in enumerate(zip(numOutMFs,typeOutMFs)):
+            self.numOutMFs = bitmaskarray(init[2],10)
+            typeOutMFs = bitmaskarray(init[3],512,len(self.numOutMFs))
+            for i,(outp,m) in enumerate(zip(self.numOutMFs,typeOutMFs)):
                 self.addvar('output','output%d'%i,outRange.next())
                 for j,mf in enumerate(bitmaskarray(m,2,outp)):
                     self.output[-1].addmf('%s%d'%(let[j],i),self._mfList[mf])
@@ -86,16 +84,23 @@ class FIS(object):
                 if rule_options and rule_selection:
                     self.rule_options = rule_options
                     self.rule_selection = rule_selection
-            elif rule_options and rule_selection:
-                rules = [rule for i,rule in 
-                zip(bitmaskarray(rule_selection,2,prod(numInMFs+numOutMFs)),
-                                                                rule_options) 
-                                                                        if i]
+            elif rule_options:
                 self.rule_options = rule_options
-                self.rule_selection
+                if not rule_selection:
+                    rule_selection = range(prod(self.numInMFs+self.numOutMFs))
+            elif rule_selection:
+                if not rule_options:
+                    self.randRules()
+                else:
+                    self.rule_options = rule_options
+                rules = [rule for i,rule in 
+                zip(bitmaskarray(rule_selection,2,prod(self.numInMFs+self.numOutMFs)),
+                                                            self.rule_options) 
+                                                                        if i]
+                self.rule_selection = rule_selection
                 self.addrule(rules)
             else:
-                self.addrule(self.fillBase(numInMFs,numOutMFs))
+                self.addrule(self.fillBase(self.numInMFs,self.numOutMFs))
         else:
             self.init = [None]*4
 
@@ -115,6 +120,9 @@ class FIS(object):
         for rule in self.rule:
             s += rule.__str__('\t\t') + '\n'
         return s
+    
+    def __eq__(self,other):
+        return self.__dict__ == other.__dict__
         
     def config(self):
         if len(self.input) == 0 or len(self.output) == 0:
@@ -133,19 +141,25 @@ class FIS(object):
         inRanges = [inp.range for inp in self.input]
         outRanges = [outp.range for outp in self.output]
         if rules is None:
-            rules = [r.encode() for r in self.rule]
+            rules = tuple(r.encode() for r in self.rule)
+        
+        if encoded and len(encoded) == prod(self.numInMFs + self.numOutMFs)+1:
+            rule_selection = encoded.pop()
         retFIS = FIS(init=self.init,inRange=inRanges,outRange=outRanges,
                      rules=rules,rule_options=rule_options,
                      rule_selection=rule_selection)
         if encoded is not None:
-            retFIS.decode(encoded)
+            rule_selection = retFIS.decode(encoded)
         else:
             retFIS.decode(self.encode())
         return retFIS
 
-    def encode(self):
+    def encode(self,rule=True):
         var = self.input + self.output
-        return deque(sum((sum([mf.params for mf in v.mf],[]) for v in var),[]))
+        ret = deque(sum((sum([mf.params for mf in v.mf],[]) for v in var),[]))
+        if rule and hasattr(self,'rule_selection'):
+            ret.append(self.rule_selection)
+        return ret
 
     def decode(self,encoded):
         if not type(encoded) is deque:
@@ -155,7 +169,9 @@ class FIS(object):
         for i,num_in in enumerate(num_mf):
             for mf in xrange(num_in):
                 params = var[i].mf[mf].params
-                var[i].mf[mf].params = [encoded.popleft() for _ in params] 
+                var[i].mf[mf].params = [encoded.popleft() for _ in params]
+        if encoded:
+            return encoded
 
     def randomize(self,keep_rules=False,ret=False):
         # This only works for well-order param lists (like tri and trap)
@@ -168,6 +184,8 @@ class FIS(object):
             return self.replicate(out)
         if not hasattr(self,'rule_options'):
             self.randRules()
+        else:
+            self.randRules(False)
         rule_selects = random.sample(xrange(self.rule_num_poss),self.rule_num)
         rule_selection = 0;
         for i in rule_selects:
@@ -258,12 +276,10 @@ class FIS(object):
             out_args = sorted([out_arg_samples.next() for i in xrange(prod(ins))])
             return tuple(inarg+(outarg,1,0) for inarg,outarg in zip(in_args,out_args))
 
-    def randRules(self):
-        numInMFs = bitmaskarray(self.init[0],10)
-        numOutMFs = bitmaskarray(self.init[2],10)
-        self.rule_options = self.ruleGen(numInMFs + numOutMFs)
-        self.rule_num = prod(numInMFs)
-        self.rule_num_poss = prod(numInMFs + numOutMFs)
+    def randRules(self,gen_rules=True):
+        self.rule_options = self.ruleGen(self.numInMFs + self.numOutMFs)
+        self.rule_num = prod(self.numInMFs)
+        self.rule_num_poss = prod(self.numInMFs + self.numOutMFs)
 
     def addrule(self,rules):
         numInput = len(self.input)
@@ -313,21 +329,8 @@ class FIS(object):
             ruletemp = [r[o] for r in ruleout]
             agg = [aggMethod([y[i] for y in ruletemp]) 
                                              for i in xrange(len(ruletemp[0]))]
-            outputs.append(defuzzMethod(agg,o))
+            outputs.append(defuzzMethod(agg,self.output[o].range))
         return outputs if len(outputs)>1 else outputs[0]
-        
-    def defuzzCentroid(self,agg,out):
-        a,b = self.output[out].range
-        points = len(agg)
-        dx = (b-a)/(points - 1)
-        totarea = sum(agg)
-        if totarea == 0:
-            print('Total area was zero. Using average of the range instead')
-            return (a+b)/2
-        totmom = 0
-        for i,y in enumerate(agg):
-            totmom += y*(a + i*dx)
-        return totmom/totarea
 
 class FuzzyVar(object):
     def __init__(self,varname,varrange,parent=None,vartype=None):
@@ -350,6 +353,13 @@ class FuzzyVar(object):
         for mf in self.mf:
             s += mf.__str__(indent+'\t') + '\n'
         return s
+    
+    def __eq__(self,other):
+        local_dict = self.__dict__.copy()
+        other_dict = other.__dict__.copy()
+        local_dict.pop('parent')
+        other_dict.pop('parent')
+        return local_dict == other_dict
         
     def addmf(self,mfname,mftype,mfparams=None):
         mf = MF(mfname,mftype,mfparams,self)
@@ -382,14 +392,14 @@ class MF(object):
         self.name = mfname
         self.type = mftype
         
-        mfdict = {'trimf'           :   (self.mfTriangle,3),
-                  'trapmf'          :   (self.mfTrapezoid,4),
-                  'trunctrilumf'    :   (self.mfTruncTriLeftUpper,4),
-                  'trunctrillmf'    :   (self.mfTruncTriLeftLower,4),
-                  'trunctrirumf'    :   (self.mfTruncTriRightUpper,4),
-                  'trunctrirlmf'    :   (self.mfTruncTriRightLower,4),
-                  'gaussmf'         :   (self.mfGaussian,2),
-                  'gauss2mf'        :   (self.mfGaussian2,2)}
+        mfdict = {'trimf'           :   (mfTriangle,3),
+                  'trapmf'          :   (mfTrapezoid,4),
+                  'trunctrilumf'    :   (mfTruncTriLeftUpper,4),
+                  'trunctrillmf'    :   (mfTruncTriLeftLower,4),
+                  'trunctrirumf'    :   (mfTruncTriRightUpper,4),
+                  'trunctrirlmf'    :   (mfTruncTriRightLower,4),
+                  'gaussmf'         :   (mfGaussian,2),
+                  'gauss2mf'        :   (mfGaussian2,2)}
         
         self.mf = mfdict[self.type][0]
         if mfparams is not None:
@@ -411,9 +421,12 @@ class MF(object):
         for att in mf_atts:
             s += indent + '{0:>10}: {1}\n'.format(att,self.__dict__[att])
         return s
+    
+    def __eq__(self,other):
+        return self.__dict__ == other.__dict__
 
     def evalmf(self,x):
-        return self.mf(x)
+        return self.mf(x,self.params)
         
     def evalset(self,points=101):
         if hasattr(self,'range'):
@@ -426,117 +439,7 @@ class MF(object):
         #Fake linspace until I bring in numpy for the time being. Baby steps...
         dx = (b - a)/(points-1)
         xlinspace = [a + i*dx for i in xrange(points-1)] + [b]
-        return [self.mf(x) for x in xlinspace]
-    
-    def mfTriangle(self,x,params=None):
-        if params is not None:
-            a,b,c = params
-        else:
-            a,b,c = self.params
-        check = [b<a,c<b,a==b,b==c,a<=x<=c]
-        if any(check[:2]):
-            #Throw an invalid param exception
-            pass
-        if not check[4]:
-#            print('outside of range')
-            return 0
-        if check[2]:
-            return (c-x)/(c-b)
-        elif check[3]:
-            return (x-a)/(b-a)
-        else:
-            return min((x-a)/(b-a),(c-x)/(c-b))
-            
-    def mfTrapezoid(self,x,params=None):
-        if params is not None:
-            a,b,c,d = params
-        else:
-            a,b,c,d = self.params
-        check = [b<a,c<b,d<c,a==b,b==c,c==d,a<=x<=d]
-        if any(check[:3]):
-            #Throw an invalid param exception
-            pass
-        if not check[6]:
-#            print('outside of range')
-            return 0
-        if check[4]:
-            return self.mfTriangle(x,[a,b,d])
-        if check[3]:
-            return min(1,(d-x)/(d-c))
-        if check[5]:
-            return min((x-a)/(b-a),1)
-        else:
-            return min((x-a)/(b-a),1,(d-x)/(d-c))
-    
-    def mfTruncTriLeftUpper(self,x,params=None):
-        if params is not None:
-            a,b,c,d = params
-        else:
-            a,b,c,d = self.params
-        check = [b<a,c<b,d<c]
-        if any(check):
-            #Throw an inalid parameter exception
-            pass
-        if x<=c:
-            return 1
-        else:
-            return self.mfTriangle(x,[a,b,d])
-
-    def mfTruncTriLeftLower(self,x,params=None):
-        if params is not None:
-            a,b,c,d = params
-        else:
-            a,b,c,d = self.params
-        check = [b<a,c<b,d<c]
-        if any(check):
-            #Throw an inalid parameter exception
-            pass
-        if x<=b:
-            return 0
-        else:
-            return self.mfTriangle(x,[a,c,d])
-
-    def mfTruncTriRightUpper(self,x,params=None):
-        if params is not None:
-            a,b,c,d = params
-        else:
-            a,b,c,d = self.params
-        check = [b<a,c<b,d<c]
-        if any(check):
-            #Throw an inalid parameter exception
-            pass
-        if x>=b:
-            return 1
-        else:
-            return self.mfTriangle(x,[a,c,d])
-
-    def mfTruncTriRightLower(self,x,params=None):
-        if params is not None:
-            a,b,c,d = params
-        else:
-            a,b,c,d = self.params
-        check = [b<a,c<b,d<c]
-        if any(check):
-            #Throw an inalid parameter exception
-            pass
-        if x>=c:
-            return 0
-        else:
-            return self.mfTriangle(x,[a,b,d])
-
-    def mfGaussian(self,x,params=None):
-        if params is not None:
-            sigma,c = params
-        else:
-            sigma,c = self.params
-        if sigma == 0:
-            #Throw invalid param exception
-            pass
-        t = (x-c)/sigma
-        return exp(-t*t/2)
-    
-    def mfGaussian2(self):
-        pass
+        return [self.mf(x,self.params) for x in xlinspace]
         
 class Rule(object):
     def __init__(self,antecedent,consequent,weight,connection):
@@ -555,5 +458,110 @@ class Rule(object):
                                      (self.weight,self.connection,)
         return indent + s.format(*a)
     
+    def __eq__(self,other):
+        return self.__dict__ == other.__dict__
+    
     def encode(self):
         return self.antecedent + self.consequent + (self.weight, self.connection)
+
+def mfTriangle(x,params):
+    a,b,c = params
+    check = [b<a,c<b,a==b,b==c,a<=x<=c]
+    if any(check[:2]):
+        #Throw an invalid param exception
+        pass
+    if not check[4]:
+#        print('outside of range')
+        return 0
+    if check[2]:
+        return (c-x)/(c-b)
+    elif check[3]:
+        return (x-a)/(b-a)
+    else:
+        return min((x-a)/(b-a),(c-x)/(c-b))
+        
+def mfTrapezoid(x,params):
+    a,b,c,d = params
+    check = [b<a,c<b,d<c,a==b,b==c,c==d,a<=x<=d]
+    if any(check[:3]):
+        #Throw an invalid param exception
+        pass
+    if not check[6]:
+#            print('outside of range')
+        return 0
+    if check[4]:
+        return mfTriangle(x,[a,b,d])
+    if check[3]:
+        return min(1,(d-x)/(d-c))
+    if check[5]:
+        return min((x-a)/(b-a),1)
+    else:
+        return min((x-a)/(b-a),1,(d-x)/(d-c))
+
+def mfTruncTriLeftUpper(x,params):
+    a,b,c,d = params
+    check = [b<a,c<b,d<c]
+    if any(check):
+        #Throw an inalid parameter exception
+        pass
+    if x<=c:
+        return 1
+    else:
+        return mfTriangle(x,[a,b,d])
+
+def mfTruncTriLeftLower(x,params):
+    a,b,c,d = params
+    check = [b<a,c<b,d<c]
+    if any(check):
+        #Throw an inalid parameter exception
+        pass
+    if x<=b:
+        return 0
+    else:
+        return mfTriangle(x,[a,c,d])
+
+def mfTruncTriRightUpper(x,params):
+    a,b,c,d = params
+    check = [b<a,c<b,d<c]
+    if any(check):
+        #Throw an inalid parameter exception
+        pass
+    if x>=b:
+        return 1
+    else:
+        return mfTriangle(x,[a,c,d])
+
+def mfTruncTriRightLower(x,params):
+    a,b,c,d = params
+    check = [b<a,c<b,d<c]
+    if any(check):
+        #Throw an inalid parameter exception
+        pass
+    if x>=c:
+        return 0
+    else:
+        return mfTriangle(x,[a,b,d])
+
+def mfGaussian(x,params):
+    sigma,c = params
+    if sigma == 0:
+        #Throw invalid param exception
+        pass
+    t = (x-c)/sigma
+    return exp(-t*t/2)
+
+def mfGaussian2():
+    pass
+ 
+def defuzzCentroid(agg,outrange):
+    a,b = outrange
+    points = len(agg)
+    dx = (b-a)/(points - 1)
+    totarea = sum(agg)
+    if totarea == 0:
+        print('Total area was zero. Using average of the range instead')
+        return (a+b)/2
+    totmom = 0
+    for i,y in enumerate(agg):
+        totmom += y*(a + i*dx)
+    return totmom/totarea

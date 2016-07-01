@@ -25,8 +25,11 @@ class GA(object):
         self.numParents = popSize//5
 
     def addSystem(self,system):
-        if not any(hasattr())
+        if not all(hasattr(system,x) for x in ('randomize','copy')):
+            print("This system is not valid for GA optimization")
+            return
         self.system = system
     
     def initPop(self):
-        
+        pop = [system]
+    

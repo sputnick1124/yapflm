@@ -31,10 +31,10 @@ def bitmaskarray(n,base=512,length=None):
         return retarray[::-1]
     return retval[::-1]
 
-def storebits(a,shift=9):
+def storebits(a,base=512):
     retval = 0
     for i,x in enumerate(a[::-1]):
-        retval += x * (shift**i)
+        retval += x * (base**i)
     return retval
 
 class FIS(object):
@@ -45,7 +45,8 @@ class FIS(object):
                  
     def __init__(self,name='',fistype='mamdani',andMethod='min',orMethod='max',
                   impMethod='min',aggMethod='max',defuzzMethod='centroid',
-                  init=None,inRange=None,outRange=None,rules=None):
+                  init=None,inRange=None,outRange=None,
+                  rules=None,rule_options=None,rule_selection=None):
         self.defuzz =    {'centroid' :   self.defuzzCentroid}
         self.input,self.output = [],[]
         self.name = name
@@ -64,21 +65,34 @@ class FIS(object):
                 inRange, outRange = cycle([r]),cycle([r])
                 print("No range specified. Defaulting to [-1,1]")
             else:
-                inRange = cycle((inRange,))
-                outRange = cycle((outRange,))
+                inRange = cycle(inRange)
+                outRange = cycle(outRange)
             numInMFs = bitmaskarray(init[0],10)
             typeInMFs = bitmaskarray(init[1],512,len(numInMFs))
+#            init[:2] = [None]*2
             for i,(inp,m) in enumerate(zip(numInMFs,typeInMFs)):
                 self.addvar('input','input%d'%i,inRange.next())
                 for j,mf in enumerate(bitmaskarray(m,2,inp)):
                     self.input[-1].addmf('%s%d'%(let[j],i),self._mfList[mf])
             numOutMFs = bitmaskarray(init[2],10)
             typeOutMFs = bitmaskarray(init[3],512,len(numOutMFs))
+#            init[2:] = [None]*2
             for i,(outp,m) in enumerate(zip(numOutMFs,typeOutMFs)):
                 self.addvar('output','output%d'%i,outRange.next())
                 for j,mf in enumerate(bitmaskarray(m,2,outp)):
                     self.output[-1].addmf('%s%d'%(let[j],i),self._mfList[mf])
             if rules:
+                self.addrule(rules)
+                if rule_options and rule_selection:
+                    self.rule_options = rule_options
+                    self.rule_selection = rule_selection
+            elif rule_options and rule_selection:
+                rules = [rule for i,rule in 
+                zip(bitmaskarray(rule_selection,2,prod(numInMFs+numOutMFs)),
+                                                                rule_options) 
+                                                                        if i]
+                self.rule_options = rule_options
+                self.rule_selection
                 self.addrule(rules)
             else:
                 self.addrule(self.fillBase(numInMFs,numOutMFs))
@@ -114,16 +128,19 @@ class FIS(object):
                         for mf in outp.mf],2) for outp in self.output],512))
         return self.init
         
-    def copy(self,encoded=None):
+    def replicate(self,encoded=None,rules=None,rule_options=None,
+                  rule_selection=None):
         inRanges = [inp.range for inp in self.input]
         outRanges = [outp.range for outp in self.output]
-        retFIS = FIS(init=self.init,inRange=inRanges,outRange=outRanges)
+        if rules is None:
+            rules = [r.encode() for r in self.rule]
+        retFIS = FIS(init=self.init,inRange=inRanges,outRange=outRanges,
+                     rules=rules,rule_options=rule_options,
+                     rule_selection=rule_selection)
         if encoded is not None:
             retFIS.decode(encoded)
         else:
             retFIS.decode(self.encode())
-        rules = [r.encode() for r in self.rule]
-        retFIS.addrule(rules)
         return retFIS
 
     def encode(self):
@@ -140,17 +157,29 @@ class FIS(object):
                 params = var[i].mf[mf].params
                 var[i].mf[mf].params = [encoded.popleft() for _ in params] 
 
-    def randomize(self,ret=False):
+    def randomize(self,keep_rules=False,ret=False):
         # This only works for well-order param lists (like tri and trap)
         out = deque()
         for var in self.input + self.output:
             for mf in var.mf:
                 [out.append(x) for x in 
                        sorted((random.uniform(*var.range) for p in mf.params))]
+        if keep_rules:
+            return self.replicate(out)
+        if not hasattr(self,'rule_options'):
+            self.randRules()
+        rule_selects = random.sample(xrange(self.rule_num_poss),self.rule_num)
+        rule_selection = 0;
+        for i in rule_selects:
+            rule_selection += (1<<i) 
+        rule_arg = [rule for i,rule in 
+        zip(bitmaskarray(rule_selection,2,self.rule_num_poss),self.rule_options) 
+                                                                          if i]
+        rules = [arg+(1,0) for arg in rule_arg]
         if ret:
             return out
         else:
-            return self.copy(out)
+            return self.replicate(out,rules,self.rule_options,rule_selection)
 
     def addvar(self,vartype,varname,varrange):
         if vartype in 'input':
@@ -205,25 +234,41 @@ class FIS(object):
             pass
 
     def _flatten(self,nested_iter):
-        for i in nested_iter:
-            if hasattr(i,'__iter__'):
-                for j in self._flatten(i):
-                    yield j
-            else:
-                yield i
+        if hasattr(nested_iter,'__iter__'):
+            for i in nested_iter:
+                if hasattr(i,'__iter__'):
+                    for j in self._flatten(i):
+                        yield j
+                else:
+                    yield i
+        else:
+            yield nested_iter
 
     def ruleGen(self,mfs):
         ranges = map(range,mfs)
-        return [list(self._flatten(x)) for x in reduce(product,ranges)]
+        return tuple(tuple(self._flatten(x)) for x in reduce(product,ranges))
 
     def fillBase(self,ins,outs):
-        args = self.ruleGen(ins+outs)
-        return [arg+[1,0] for arg in args]
+        in_args = self.ruleGen(ins)
+        if len(outs) > 1:
+            out_args = cycle(self.ruleGen(outs))
+            return tuple(inarg+outarg+(1,0) for inarg,outarg in zip(in_args,out_args))
+        else:
+            out_arg_samples = cycle(xrange(outs[0]))
+            out_args = sorted([out_arg_samples.next() for i in xrange(prod(ins))])
+            return tuple(inarg+(outarg,1,0) for inarg,outarg in zip(in_args,out_args))
+
+    def randRules(self):
+        numInMFs = bitmaskarray(self.init[0],10)
+        numOutMFs = bitmaskarray(self.init[2],10)
+        self.rule_options = self.ruleGen(numInMFs + numOutMFs)
+        self.rule_num = prod(numInMFs)
+        self.rule_num_poss = prod(numInMFs + numOutMFs)
 
     def addrule(self,rules):
         numInput = len(self.input)
         numOutput = len(self.output)
-        if not any(isinstance(rule,list) for rule in rules):
+        if not any(hasattr(rule,'__iter__') for rule in rules):
             rules = [rules]
         for rule in rules:
             if not len(rule) != sum([numInput,numOutput,2]):
@@ -326,7 +371,7 @@ class FuzzyVar(object):
             numOut = len(self.parent.output)
             self.parent.init[2] += 10**(numOut - self.num - 1)
             
-            typeMFs = bitmaskarray(self.parent.init[1])
+            typeMFs = bitmaskarray(self.parent.init[3])
             if len(typeMFs) <= numOut:
                 typeMFs = [0]*(numOut-len(typeMFs)) + typeMFs
             typeMFs[self.num] = (typeMFs[self.num]<<1) + mftypes[mftype]
@@ -511,4 +556,4 @@ class Rule(object):
         return indent + s.format(*a)
     
     def encode(self):
-        return self.antecedent + self.consequent + [self.weight, self.connection]
+        return self.antecedent + self.consequent + (self.weight, self.connection)

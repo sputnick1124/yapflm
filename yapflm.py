@@ -131,7 +131,7 @@ class FIS(object):
         return self.__dict__ == other.__dict__
     
     def check(self):
-        return all(var.check for var in [self.inputs + self.outputs])
+        return all(var.check() for var in self.input + self.output)
     
     def config(self):
         if len(self.input) == 0 or len(self.output) == 0:
@@ -286,6 +286,8 @@ class FIS(object):
             return tuple(inarg+(outarg,1,0) for inarg,outarg in zip(in_args,out_args))
 
     def randRules(self,gen_rules=True):
+        self.numInMFs = bitmaskarray(self.init[0],10)
+        self.numOutMFs = bitmaskarray(self.init[2],10)
         self.rule_options = self.ruleGen(self.numInMFs + self.numOutMFs)
         self.rule_num = prod(self.numInMFs)
         self.rule_num_poss = prod(self.numInMFs + self.numOutMFs)
@@ -370,6 +372,12 @@ class FuzzyVar(object):
         other_dict.pop('parent')
         return local_dict == other_dict
         
+    def check(self):
+        retval =  any(mf.evalmf(None) for mf in self.mf)
+        print(self)
+        print(retval)
+        return retval
+        
     def addmf(self,mfname,mftype,mfparams=None):
         try:
             mf = MF(mfname,mftype,mfparams,self)
@@ -414,11 +422,6 @@ class MF(object):
                   'gauss2mf'        :   (mfGaussian2,2)}
         
         self.mf = mfdict[self.type][0]
-        try:
-            self.mf(None,mfparams)
-#            self.params = mfparams
-        except ParamError as e:
-            raise e
         if mfparams is not None:
             self.params = mfparams
         elif parent is not None:
@@ -430,8 +433,13 @@ class MF(object):
             self.params = [0]*mfdict[self.type][1]
         if not mfdict[self.type][1] == len(self.params):
             #Throw invalid param number exception
-            raise(Exception)
+#            raise(Exception)
             pass
+        try:
+            self.mf(None,self.params)
+#            self.params = mfparams
+        except ParamError as e:
+            raise e
 
     def __str__(self,indent=''):
         mf_atts = ['name','type','params']
@@ -496,6 +504,8 @@ def mfTriangle(x,params):
             errs = ['b<a','c<b']
             e = [errs[i] for i,_ in enumerate(err) if _]
             raise ParamError(params,'Invalid params {}: {}'.format(e,params))
+        else:
+            return 0 #Everything looks good
     if not check[2]:
 #        print('outside of range')
         return 0
@@ -516,6 +526,8 @@ def mfTrapezoid(x,params):
             errs = ['b<a','c<b','d<c']
             e = [errs[i] for i,_ in enumerate(err) if _]
             raise ParamError(params,'Invalid params {}: {}'.format(e,params))
+        else:
+            return 0 #Everything looks good
     if not check[3]:
 #            print('outside of range')
         return 0
@@ -537,6 +549,8 @@ def mfTruncTriLeftUpper(x,params):
             errs = ['b<a','c<b','d<c']
             e = [errs[i] for i,_ in enumerate(err) if _]
             raise ParamError(params,'Invalid params {}: {}'.format(e,params))
+        else:
+            return 0 #Everything looks good
     if x<=c:
         return 1
     else:
@@ -551,6 +565,8 @@ def mfTruncTriLeftLower(x,params):
             errs = ['b<a','c<b','d<c']
             e = [errs[i] for i,_ in enumerate(err) if _]
             raise ParamError(params,'Invalid params {}: {}'.format(e,params))
+        else:
+            return 0 #Everything looks good
     if x<=b:
         return 0
     else:
@@ -565,6 +581,8 @@ def mfTruncTriRightUpper(x,params):
             errs = ['b<a','c<b','d<c']
             e = [errs[i] for i,_ in enumerate(err) if _]
             raise ParamError(params,'Invalid params {}: {}'.format(e,params))
+        else:
+            return 0 #Everything looks good
     if x>=b:
         return 1
     else:
@@ -579,6 +597,8 @@ def mfTruncTriRightLower(x,params):
             errs = ['b<a','c<b','d<c']
             e = [errs[i] for i,_ in enumerate(err) if _]
             raise ParamError(params,'Invalid params {}: {}'.format(e,params))
+        else:
+            return 0 #Everything looks good
     if x>=c:
         return 0
     else:

@@ -32,6 +32,7 @@ class GA(object):
             print("This system is not valid for GA optimization")
             return
         self.system = system
+        self.ranges = system.getranges()
     
     def initPop(self,popSize=None):
         if popSize is None:
@@ -45,9 +46,14 @@ class GA(object):
         self.fitness_fn = function
     
     def crossover(self,ind1,ind2):
-        #stuff
+        x1 = ind1.encode()
+        x2 = ind2.encode()
+        for x1x2 in zip(x1,x2):
+            xMin,xMax = min(x1x2),max(x1x2)
+            
         try:
             child = parent[0].replicate(encoded)
         except ParamError as e:
-            raise a
+            return
+        
         

@@ -12,13 +12,13 @@ from fisparse import FISParser
 myfis = FIS('myfis')
 myfis.addvar('input','x',[-0.5,1.5])
 myfis.addvar('output','y',[-0.5,1.5])
-#myfis.input[0].addmf('s','trimf',[-0.1895 ,  -0.0194   , 0.8362])
-myfis.input[0].addmf('s','trimf',[0.1895 ,  -0.0194   , 0.8362])
+myfis.input[0].addmf('s','trimf',[-0.1895 ,  -0.0194   , 0.8362])
+#myfis.input[0].addmf('s','trimf',[0.1895 ,  -0.0194   , 0.8362])
 myfis.input[0].addmf('m','trimf',[0.8054  ,  1.0101,    1.3791])
 myfis.input[0].addmf('b','trimf',[0.0048  ,  0.5913   , 1.0248])    
 myfis.output[0].addmf('sm','trimf',[-0.1831  , -0.0562   , 0.5103])
 myfis.output[0].addmf('l','trimf',[0.3741   , 1.1991  ,  1.4066])
-rules = [[0,0,1,1],[1,1,1,1],[2,1,1,1]]
+rules = ((0,0,1,1),(1,1,1,1),(2,1,1,1))
 myfis.addrule(rules)
 
 #myfisparser = FISParser('fuzzy_crt_opt.fis')

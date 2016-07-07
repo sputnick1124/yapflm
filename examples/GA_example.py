@@ -38,9 +38,9 @@ fn = lambda x: x**(0.45)
 fitness1 = fitness_fn(fn)
 
 myfis = GFS(init=[3,0,2,0],inRange=[-0.5,1.5],outRange=[-0.5,1.5],
-            rules = ((0,0,1,1),(1,1,1,1),(2,1,1,1)))
-
-myga = GA(stagnation=None)
+            rules = ((0,0,1,0),(1,1,1,0),(2,1,1,0)))
+myfis.keep_rules = False
+myga = GA(popSize=25)
 myga.addSystem(myfis)
 myga.addFitness(fitness1)
 best = myga.evalGA()

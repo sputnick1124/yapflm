@@ -101,7 +101,7 @@ class GA(object):
             parents += elites
             children = [self.crossover(*random.sample(parents,2)) for i in xrange(self.numRecomb+self.numMut)]
             children[-self.numMut:] = map(self.mutate,children[-self.numMut:])
-            randoms = tuple(self.system.randomize(keep_rules=True) for i in xrange(self.numRand))
+            randoms = tuple(self.system.randomize() for i in xrange(self.numRand))
             newPop = elites + tuple(children) + randoms
             self.populations.append(newPop)
             self.cur_gen += 1
@@ -110,7 +110,7 @@ class GA(object):
         return self.populations[-1][0]
     
     def initPop(self):
-        self.populations = [[self.system.randomize(keep_rules=True) for i in xrange(self.popSize)]]
+        self.populations = [[self.system.randomize() for i in xrange(self.popSize)]]
 
     def evalPopulation(self,pop):
         return [(self.fitness(individual),i) for i,individual in enumerate(pop)]
@@ -118,46 +118,40 @@ class GA(object):
     def addFitness(self,fitness_fun):
         self.fitness = fitness_fun
         
-    def crossover(self,parent1,parent2):
+    def crossover(self,parent1,parent2,debug=None):
         x1 = parent1.encode()
         x2 = parent2.encode()
         xMin,xMax = zip(*[(min(a,b),max(a,b)) for a,b in zip(x1,x2)])
         child,param_num = [],0
-#        ranges = []
-#        newranges = []
-#        print(len(x1))
-#        print(parent1.numParams)
+        if debug:
+            stuff = []
         for group in sum(self.ranges,[]):
-            if param_num == parent1.numParams:
-#                print(x1[-1])
-#                print(x2[-1])
-                new_rule_selection = (x1[-1]&496) | (x2[-1]&15)
-#                print(new_rule_selection)
-                child.append(new_rule_selection)
-#                print('-'*10)
-                break
             for i,param_lim in enumerate(group):
                 ak,bk = param_lim
                 alpha = abs((xMax[param_num]-xMin[param_num])/(bk-ak))
                 I = min(xMin[param_num] - ak,bk - xMax[param_num])
                 low = xMin[param_num] - I*alpha
-                if param_num > 0:
-                    if low <= child[param_num-1]:
+                if debug:
+                    stuff.append(
+                    (param_num, round(I,5), round(alpha,5), round(low,5), round(xMax[param_num]+I*alpha,5))
+                    )
+                if i > 0:
+                    if low >= child[param_num-1]:
                         pass
                     else:
                         low = child[param_num-1]
                 newRange = (low,xMax[param_num] + I*alpha)
+                if debug:
+                    stuff += newRange
                 child.append(random.uniform(*newRange))
+#                child.append(sum(newRange)/2.)
 #                newranges.append(newRange)
                 param_num += 1
-#        print('+'*15)
-#        ranges = zip(xMin,xMax)
-#        r = zip(ranges,newranges)
-#        for i in xrange(param_num):
-#            print('({0:5.2},{1:5.2})\t->\t({2:5.2},{3:5.2})'.\
-#            format(r[i][0][0],r[i][0][1],r[i][1][0],r[i][1][1]))
-#        print('+'*15)
-#        child[-1] = int(child[-1])
+        if x1[param_num] and x2[param_num]:
+            new_rule_selection = (x1[param_num]&496) | (x2[param_num]&15)
+            child.append(new_rule_selection)
+        if debug:
+            return self.system.replicate(child),stuff
         return self.system.replicate(child)
     
     def mutate(self,child,num_genomes=2,b=1.5):
@@ -181,8 +175,9 @@ class GA(object):
                 param_num += 1
         for genome,lamb,flip in zip(mut_genomes,lambdas,coin_flips):
             if genome == child.numParams:
-                print(len(mut),param_num,child.numParams,mut[-1])
-                mut[genome] ^= (1<<random.randint(0,self.system.rule_num_poss))
+#                print(len(mut),param_num,child.numParams,mut[-1])
+                if mut[genome]:
+                    mut[genome] ^= (1<<random.randint(0,self.system.rule_num_poss))
                 break
             if flip:
                 mut[genome] = ranges[genome][0] +\
@@ -196,8 +191,7 @@ class GA(object):
 
 class GFS(FIS):
     def __init__(self,init=None,inRange=None,outRange=None,
-                  rules=None,rule_options=None,rule_selection=None,
-                  rand_rules=True,**fis_kwargs):
+                  rules=None,rule_options=None,rule_selection=None,**fis_kwargs):
         super(GFS,self).__init__(**fis_kwargs)
         self._mfList = ['trimf','trapmf']
         if init is not None:
@@ -241,26 +235,19 @@ class GFS(FIS):
                     print('You need to supply rule_options for me')
             if rules:
                 self.addrule(rules)
-                self.rule_options = rule_options
-                self.rule_selection = rule_selection
-            elif rule_selection:
-                if not rule_options:
-                    self.randRules()
-                else:
-                    self.rule_options = rule_options
+            elif rule_selection and rule_options:
                 rules = [rule+(1,0) for i,rule in 
                 zip(bitmaskarray(rule_selection,2,prod(self.numInMFs+self.numOutMFs))[::-1],
-                                                            self.rule_options) 
+                                                            rule_options) 
                                                                         if i]
                 self.rule_selection = rule_selection
                 self.addrule(rules)
             else:
-                self.addrule(self.fillBase(self.numInMFs,self.numOutMFs))
-                if rand_rules:
-                    self.randRules()
+                print('no rules added')
         else:
             self.init = [None]*4
         self.numParams = self.decode(None)
+        self.keep_rules = True
 
     def addvar(self,vartype,varname,varrange):
         if vartype in 'input':
@@ -299,27 +286,34 @@ class GFS(FIS):
                         for mf in outp.mf],2) for outp in self.output],512))
         return self.init
         
-    def replicate(self,encoded=None,rules=None,rule_options=None,
-                  rule_selection=None,debug=False):
+    def replicate(self,encoded=None,rule_selection=None):
         inRanges = [inp.range for inp in self.input]
         outRanges = [outp.range for outp in self.output]
-        if rules is not None:
-            
-        if rules is None:
-            if debug:
-                print('i have no rules')
+        if self.keep_rules:
             rules = tuple(r.encode() for r in self.rule)
-        if encoded and len(encoded) == self.numParams+1:
-            if debug:
-                print('i have encoded and it has rule_selection')
+            retFIS = GFS(init=self.init,inRange=inRanges,outRange=outRanges,
+                         rules=rules)
+        elif rule_selection:
+            retFIS = GFS(init=self.init,inRange=inRanges,outRange=outRanges,
+                         rule_options=self.rule_options,
+                         rule_selection=rule_selection)
+        elif encoded and len(encoded) == self.numParams+1:
             rule_selection = encoded.pop()
-        retFIS = GFS(init=self.init,inRange=inRanges,outRange=outRanges,
+            inRanges = [var.range for var in self.input]
+            outRanges = [var.range for var in self.output]
+            retFIS = GFS(init=self.init,inRange=inRanges,outRange=outRanges,
                      rule_options=self.rule_options,rule_selection=rule_selection)
-        if encoded is not None:
+            retFIS.decode(encoded)
+            return retFIS
+        else:
+            rules = tuple(r.encode() for r in self.rule)
+            retFIS = GFS(init=self.init,inRange=inRanges,outRange=outRanges,
+                         rules=rules)
+        if encoded:
             retFIS.decode(encoded)
         else:
             retFIS.decode(self.encode())
-        return retFIS#,self.check()
+        return retFIS #,self.check()
 
     def encode(self,rule=True):
         var = self.input + self.output
@@ -348,32 +342,31 @@ class GFS(FIS):
         if ret:
             return count
 
-    def randomize(self,keep_rules=False,ret=False):
+    def randomize(self,ret=False):
         # This only works for well-ordered param lists (like tri and trap)
         out = deque()
         for var in self.input + self.output:
             for mf in var.mf:
                 [out.append(x) for x in 
                        sorted((random.uniform(*var.range) for p in mf.params))]
-        if keep_rules:
-            rules = tuple(r.encode() for r in self.rule)
-            return self.replicate(out,rules=rules)
-        if not hasattr(self,'rule_options'):
+        if self.keep_rules:
+            return self.replicate(out)
+        if self.rule_options is None:
             self.randRules()
-        else:
+        elif self.rule_num_poss is None:
             self.randRules(False)
         rule_selects = random.sample(xrange(self.rule_num_poss),self.rule_num)
         rule_selection = 0;
         for i in rule_selects:
             rule_selection += (1<<i) 
-        rule_arg = [rule for i,rule in 
-        zip(bitmaskarray(rule_selection,2,self.rule_num_poss),self.rule_options) 
-                                                                          if i]
-        rules = [arg+(1,0) for arg in rule_arg]
+#        rule_arg = [rule for i,rule in 
+#        zip(bitmaskarray(rule_selection,2,self.rule_num_poss),self.rule_options) 
+#                                                                          if i]
+#        rules = [arg+(1,0) for arg in rule_arg]
         if ret:
             return out
         else:
-            return self.replicate(out,rules,self.rule_options,rule_selection)
+            return self.replicate(out,rule_selection)
 
     def _flatten(self,nested_iter):
         if hasattr(nested_iter,'__iter__'):

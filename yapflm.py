@@ -145,6 +145,7 @@ class FIS(object):
                             firing_strength=rulestrength,impMethod=impMethod,mode=mode)
 #                ruleout[-1].append([impMethod([rulestrength,y]) for y in outset])
                 ruleout[-1].append(outset)
+                print(outset)
         for o in xrange(numout):
             if mode:
                 ruletemp = [r[o] for r in ruleout]
@@ -153,7 +154,11 @@ class FIS(object):
                 outputs.append(defuzzMethod(agg,self.output[o].range))
             else:
                 ruletemp = [r[o] for r in ruleout]
-                infer = 0
+                for r in ruletemp:
+                    print(r)
+                Eh = sum(y[1] for y in ruletemp)
+                out = sum(prod(y) for y in ruletemp)/Eh
+                outputs.append(out)                
         return outputs if len(outputs)>1 else outputs[0]
 
 class FuzzyVar(object):
@@ -263,11 +268,19 @@ class MF(object):
             return [impMethod(firing_strength,self.mf(x,self.params)) for x in xlinspace]
         else:
             mv,start = 0,0
+            end = 0
             for i,x in enumerate(xlinspace):
-                outx = self.mf(x,self.params)
+                outx = impMethod(firing_strength,self.mf(x,self.params))
                 mv,start = (outx,i) if outx>mv else (mv,start)
-                if mv == firing_strength:
-                    avg = sum(xlinspace[start:i])/(i-start)
+                print('min({},{})={}'.format(firing_strength,self.mf(x,self.params),outx),end='\t')
+                print('start:{},end:{},mv={}'.format(start,end,mv))
+                if mv and outx < firing_strength and not end:
+                    end = i
+            if end:
+                avg = (xlinspace[start] + xlinspace[end])/2
+            else:
+                avg = (a + b)/2
+                print('Sum = 0. Using average')
             return mv,avg
                 
         

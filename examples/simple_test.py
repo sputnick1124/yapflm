@@ -31,4 +31,4 @@ rule = [[0, 0, 0, 1, 0],
 fis.addrule(rule)
 
 #for i in xrange(1000):
-#    fis.evalfis([2,25])
+fis.evalfis([2,25])

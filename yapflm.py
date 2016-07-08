@@ -138,15 +138,22 @@ class FIS(object):
             mfout = [self.input[i].mf[a].evalmf(x[i]) 
                                     for i,a in enumerate(ant) if a is not None]
             # Generalize for multiple output systems. Easy
+            mode = 1
             for out in xrange(numout):
-                outset = self.output[out].mf[con[out]].evalset()
                 rulestrength = weight*comb[conn](mfout)
-                ruleout[-1].append([impMethod([rulestrength,y]) for y in outset])
+                outset = self.output[out].mf[con[out]].evalset(
+                            firing_strength=rulestrength,impMethod=impMethod,mode=mode)
+#                ruleout[-1].append([impMethod([rulestrength,y]) for y in outset])
+                ruleout[-1].append(outset)
         for o in xrange(numout):
-            ruletemp = [r[o] for r in ruleout]
-            agg = [aggMethod([y[i] for y in ruletemp]) 
-                                             for i in xrange(len(ruletemp[0]))]
-            outputs.append(defuzzMethod(agg,self.output[o].range))
+            if mode:
+                ruletemp = [r[o] for r in ruleout]
+                agg = [aggMethod([y[i] for y in ruletemp]) 
+                                                 for i in xrange(len(ruletemp[0]))]
+                outputs.append(defuzzMethod(agg,self.output[o].range))
+            else:
+                ruletemp = [r[o] for r in ruleout]
+                infer = 0
         return outputs if len(outputs)>1 else outputs[0]
 
 class FuzzyVar(object):
@@ -241,7 +248,7 @@ class MF(object):
     def evalmf(self,x):
         return self.mf(x,self.params)
         
-    def evalset(self,points=101):
+    def evalset(self,points=101,firing_strength=1,impMethod=min,mode=1):
         if hasattr(self,'range'):
             a,b = self.range
         elif not 'gauss' in self.type:
@@ -252,7 +259,17 @@ class MF(object):
         #Fake linspace until I bring in numpy for the time being. Baby steps...
         dx = (b - a)/(points-1)
         xlinspace = [a + i*dx for i in xrange(points-1)] + [b]
-        return [self.mf(x,self.params) for x in xlinspace]
+        if mode:
+            return [impMethod(firing_strength,self.mf(x,self.params)) for x in xlinspace]
+        else:
+            mv,start = 0,0
+            for i,x in enumerate(xlinspace):
+                outx = self.mf(x,self.params)
+                mv,start = (outx,i) if outx>mv else (mv,start)
+                if mv == firing_strength:
+                    avg = sum(xlinspace[start:i])/(i-start)
+            return mv,avg
+                
         
 class Rule(object):
     def __init__(self,antecedent,consequent,weight,connection):

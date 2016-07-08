@@ -128,7 +128,7 @@ class FIS(object):
         defuzzMethod = self.defuzz[self.defuzzMethod]
         comb = [andMethod,orMethod]
         self.output_x = [np.linspace(*out.range,num=self._points) for out in self.output]
-        for rule in self.rule:
+        for i,rule in enumerate(self.rule):
             ruleout.append([])
             ant = rule.antecedent
             con = rule.consequent
@@ -136,6 +136,8 @@ class FIS(object):
             conn = rule.connection
             mfout = [self.input[i].mf[a].evalmf(x[i]) 
                                     for i,a in enumerate(ant) if a is not None]
+#            print("h{}=min({},{})=".format(i,*mfout),end='')
+#            print('{}'.format(comb[conn](mfout)))
             # Generalize for multiple output systems. Easy
             for out in xrange(numout):
                 outset = self.output[out].mf[con[out]].evalmf(self.output_x[out])
@@ -144,8 +146,12 @@ class FIS(object):
         for o in xrange(numout):
 #            ruletemp = [r[o] for r in ruleout]
 #            agg = [aggMethod([y[i] for y in ruletemp]) for i in xrange(len(ruletemp[0]))]
-            agg = aggMethod(ruleout,axis=0)
-            outputs.append(defuzzMethod(agg,self.output[o].range,self.output_x[o]))
+            mode = 1
+            if mode == 1:
+                agg = aggMethod(ruleout,axis=0)
+                outputs.append(defuzzMethod(agg,self.output[o].range,self.output_x[o]))
+            if mode == 0:
+                pass
         return outputs if len(outputs)>1 else outputs[0]
 
 class FuzzyVar(object):

@@ -7,8 +7,8 @@ Created on Tue Jul  5 10:23:04 2016
 
 import sys
 sys.path.append('..')
-from ga import GA
-from gfs import GFS
+from yapflm.ga import GA
+from yapflm.gfs import GFS
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.integrate import ode
@@ -128,7 +128,7 @@ fitness1 = fitness_fn(fn1,-1,1)
 
 #myfis = GFS(init=[5,(1<<4)+(1<<0),3,0],inRange=[-13,13],outRange=[-5,120])
 #myfis._points = 1001
-myfis = GFS([5,5],5)#,in_ranges=[(-1,1)],out_ranges=[(-1,1)])
+myfis = GFS(5,5,in_ranges=[(-1,1)],out_ranges=[(-1,1)])
 
 #sim1(myfis.randomize())
 
@@ -140,18 +140,18 @@ myga.add_prototype(myfis)
 #p.close()
 #p.join()
 mod_fit = model_fitness()
-myga.add_fitness(mod_fit)
+myga.add_fitness(fitness1)
 best = myga.run()
 
 
-#x = np.linspace(-1,1,1000)
-##ya = fn1(x)
-#ya = map(fn1,x)
-#yf = map(best.evalfis,x)
-##yf = [myfis.evalfis(xx) for xx in x]
-#
-#
-#
-#plt.plot(x,ya,'b',x,yf,'g--')
-#plt.legend(['fn',"Fuzzy Approx"],loc='best')
-#plt.show()
+x = np.linspace(-1,1,1000)
+#ya = fn1(x)
+ya = map(fn1,x)
+yf = map(best.evalfis,x)
+#yf = [myfis.evalfis(xx) for xx in x]
+
+
+
+plt.plot(x,ya,'b',x,yf,'g--')
+plt.legend(['fn',"Fuzzy Approx"],loc='best')
+plt.show()

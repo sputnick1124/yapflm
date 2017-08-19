@@ -7,8 +7,8 @@ Created on Fri Jul  8 08:44:19 2016
 from __future__ import division
 import sys
 sys.path.append('..')
-from yapflm.yapflm import FIS
-from yapflm.gfs import GFS
+from yapflm import FIS
+from gfs import GFS
 import time
 
 # traditional FIS
@@ -66,7 +66,7 @@ input_scales = [10,100]
 input_scaled = [a/b for a,b in zip(input_vals,input_scales)]
 #print fis.evalfis(input_scaled)
 t1 = time.time()
-for i in xrange(int(1e4)):
+for i in xrange(int(1e5)):
     fis.evalfis(input_scaled)
 tf = time.time()-t1
 print("{} seconds".format(tf))

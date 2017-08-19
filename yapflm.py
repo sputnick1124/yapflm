@@ -1,6 +1,7 @@
 from __future__ import division , print_function
+
 import numpy as np
-  
+
 class FIS(object):
     """
     An object to hold a representation of a FIS. 
@@ -110,7 +111,29 @@ class FIS(object):
             weight = rule[-2]
             connection = rule[-1]
             self.rule.append(FuzzyRule(antecedent,consequent,weight,connection))
-    
+
+    def fita_infer(self,mfresults):
+        andMethod = self.comboper[self.andMethod]
+        orMethod = self.comboper[self.orMethod]
+        comb = [andMethod,orMethod]
+        for rule in self.rule:
+            ant = rule.antecedent
+            weight = rule.weight
+            conn = rule.connection
+            mfresult = [mfresults[i][a] for i,a in enumerate(ant) if a is not None]
+            yield weight*comb[conn](mfresult)
+
+    def fita_agg(self,ruleout):
+        mfresults = [o(ro) for o,ro in zip(self.output,ruleout)]
+        for r,rule in enumerate(self.rule):
+            
+
+    def fati_agg(self):
+        pass    
+
+    def fati_infer(self):
+        pass
+
     def evalfis(self,x):
         if not hasattr(x,'__iter__'):
             x = [x]
@@ -127,25 +150,21 @@ class FIS(object):
         aggMethod = self.comboper[self.aggMethod]
         defuzzMethod = self.defuzz[self.defuzzMethod]
         comb = [andMethod,orMethod]
-#        self.output_x = [np.linspace(*out.range,num=self._points) for out in self.output]
+        mfresults = [i(xx) for i,xx in zip(self.input,x)]
         for rule in self.rule:
             ruleout.append([])
             ant = rule.antecedent
             con = rule.consequent
             weight = rule.weight
             conn = rule.connection
-            mfresult = [self.input[i].mf[a].evalmf(x[i]) 
-                                    for i,a in enumerate(ant) if a is not None]
+            mfresult = [mfresults[i][a] for i,a in enumerate(ant) if a is not None]
             # Generalize for multiple output systems. Easy
             rulestrength = weight*comb[conn](mfresult)
 #            print(rulestrength)
             for out in xrange(numout):
-                outmf = self.output[out].mf[con[out]].evalmf(rulestrength)
+                outmf = self.output[out].mf[con[out]](rulestrength)
                 ruleout[-1].append(outmf)
         for o in xrange(numout):
-#            ruletemp = [r[o] for r in ruleout]
-#            agg = [aggMethod([y[i] for y in ruletemp]) for i in xrange(len(ruletemp[0]))]
-#            agg = aggMethod(ruleout,axis=0)
             outs = [y[o] for y in ruleout]
 #            print(outs)
             outputs.append(defuzzMethod(outs))
@@ -164,6 +183,12 @@ class FuzzyVar(object):
 #            else:
 #                self.num = None
         self.vartype = vartype
+
+    def __call__(self,x):
+        outs = []
+        for mf in self.mf:
+            outs.append(mf(x))
+        return outs
 
     def __str__(self,indent=''):
         var_atts = ['name']
@@ -195,6 +220,7 @@ class FuzzyVar(object):
         except ParamError as e:
             raise e
         self.mf.append(mf)
+
 
 
 class MF(object):
@@ -242,7 +268,7 @@ class MF(object):
         other_dict.pop('parent')
         return local_dict == other_dict
 
-    def evalmf(self,x):
+    def __call__(self,x):
         return self.mf(x)
         
 class FuzzyRule(object):
@@ -328,6 +354,8 @@ def infn(x,m,b):
     return y if y >= 0 else 0
 
 def outfn(y,m,b):
+    if not y:
+        return y
     x = ((y - b) / m) if m else None #x
     return x if (x is not None) else 0
 

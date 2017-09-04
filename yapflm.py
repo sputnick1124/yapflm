@@ -226,8 +226,8 @@ class MF(object):
         return self._params
     @params.setter
     def params(self,val):
-        self._params = val
         self.mf.get_slopes(val)
+        self._params = val
     
     def __str__(self,indent=''):
         mf_atts = ['name','_params']

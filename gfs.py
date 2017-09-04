@@ -87,12 +87,22 @@ class GFS(FIS):
         c2 = deepcopy(self)
         for i in range(len(self.input)):
             s1,s2 = self.input[i].crossover(other.input[i])
-            c1.input[i].update(s1)
-            c2.input[i].update(s2)
+            try:
+                c1.input[i].update(s1)
+                c2.input[i].update(s2)
+            except ParamError as e:
+                print(c1.input[i],c2.input[i],s1,s2)
+                print(e)
+                raise ValueError('Invalid crossover')
         for o in range(len(self.output)):
             s1,s2 = self.output[o].crossover(other.output[o])
-            c1.output[o].update(s1)
-            c2.output[o].update(s2)
+            try:
+                c1.output[o].update(s1)
+                c2.output[o].update(s2)
+            except ParamError as e:
+                print(c1.output[o],c2.output[o],s1,s2)
+                print(e)
+                raise ValueError('Invalid crossover')
         c1.rule,c2.rule = self.rule.crossover(other.rule)
         return c1,c2
 
@@ -158,7 +168,10 @@ class GenFuzzyVar(FuzzyVar):
                 self.addmf(mfname='',mfparams=params[mf*3:mf*3+3])
         else:
             for ind,mf in enumerate(self.mf):
-                mf.params = params[ind*3:ind*3+3]
+                try:
+                    mf.params = params[ind*3:ind*3+3]
+                except ParamError as e:
+                    raise(e)
 
     def addmf(self,mfname,buckets,parent=None):
         try:

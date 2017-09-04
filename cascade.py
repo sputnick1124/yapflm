@@ -10,10 +10,11 @@ class GenFuzzyCascade(object):
             c = p1.crossover(p2)
             c1.append(c[0])
             c2.append(c[1])
+        return GenFuzzyCascade(*c1),GenFuzzyCascade(*c2)
 
-    def mutate(self):
+    def mutate(self,percent=0):
         for gfs in self.gfs:
-            gfs.mutate()
+            gfs.mutate(percent=percent)
 
     def randomize(self):
         for gfs in self.gfs:

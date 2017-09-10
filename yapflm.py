@@ -45,7 +45,15 @@ class FIS(object):
         return s
 
     def __eq__(self,other):
+        """Tests for functional equivalence. Names are discounted."""
+        local_dict = self.__dict__.copy()
+        other_dict = other.__dict__.copy()
+        local_dict.pop('name', None)
+        other_dict.pop('name', None)
         return self.__dict__ == other.__dict__ #traditional method
+
+    def __ne__(self,other):
+        return not self == other
 
     def check(self):
         """
@@ -181,9 +189,14 @@ class FuzzyVar(object):
     def __eq__(self,other):
         local_dict = self.__dict__.copy()
         other_dict = other.__dict__.copy()
-        local_dict.pop('parent')
-        other_dict.pop('parent')
+        local_dict.pop('name', None)
+        other_dict.pop('name', None)
+        local_dict.pop('parent', None)
+        other_dict.pop('parent', None)
         return local_dict == other_dict
+
+    def __ne__(self,other):
+        return not self == other
 
     def check(self):
         """
@@ -239,11 +252,16 @@ class MF(object):
     def __eq__(self,other):
         local_dict = self.__dict__.copy()
         other_dict = other.__dict__.copy()
-        local_dict.pop('mf')
-        other_dict.pop('mf')
-        local_dict.pop('parent')
-        other_dict.pop('parent')
+        local_dict.pop('mf', None)
+        other_dict.pop('mf', None)
+        local_dict.pop('name', None)
+        other_dict.pop('name', None)
+        local_dict.pop('parent', None)
+        other_dict.pop('parent', None)
         return local_dict == other_dict
+
+    def __ne__(self,other):
+        return not self == other
 
     def evalmf(self,x):
         return self.mf(x)
@@ -267,6 +285,9 @@ class FuzzyRule(object):
 
     def __eq__(self,other):
         return self.__dict__ == other.__dict__
+
+    def __ne__(self,other):
+        return not self == other
 
 class TriMF(object):
     def __init__(self,params=None):
@@ -297,7 +318,9 @@ class TriMF(object):
     
     def __eq__(self,other):
         return self.__dict__ == other.__dict__
-        
+
+    def __ne__(self,other):
+        return not self == other        
 
 class InputTriMF(TriMF):
     def __init__(self,*args,**kwargs):

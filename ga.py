@@ -11,21 +11,8 @@ from random import triangular
 class GA(object):
     def __init__(self,popSize=100,genMax=200,numElite=5,numRecomb=50,
                  numMut=35,numRand=10,stagnation=10,cpus=4):
-        popTrial = sum([numElite,numRecomb,numMut,numRand])
-        if popTrial != popSize:
-            popPer = popSize/popTrial
-            numElite = int(numElite*popPer)
-            numRecomb = int(numRecomb*popPer)
-            numMut = int(numMut*popPer)
-            numRand = popSize - (numElite + numRecomb + numMut)
-            print('Incorrect population slicing. Numbers have been scaled to '
-                  'fit popSize')
-        self.popSize = popSize
+        self._pop_setup(popSize,numElite,numRecomb,numMut,numRand)
         self.genMax = genMax
-        self.numElite = numElite
-        self.numRecomb = numRecomb
-        self.numMut = numMut
-        self.numRand = numRand
         self.stagnation = stagnation
         self.fitness_hist = []
         self.seed = 0
@@ -97,3 +84,31 @@ class GA(object):
     def close(self):
 #        self.pool.close()
         pass
+
+    def _pop_setup(self,popSize=None,numElite=None,
+                   numRecomb=None,numMut=None,numRand=None):
+        if numElite is None: numElite = self.numElite
+        if numRecomb is None: numRecomb = self.numRecomb
+        if numMut is None: numMut = self.numMut
+        if numRand is None: numRand = self.numRand
+        popTrial = sum([numElite,numRecomb,numMut,numRand])
+        if popTrial != popSize:
+            popPer = popSize/popTrial
+            numElite = int(numElite*popPer)
+            numRecomb = int(numRecomb*popPer)
+            numMut = int(numMut*popPer)
+            numRand = popSize - (numElite + numRecomb + numMut)
+            print('Incorrect population slicing. Numbers have been scaled to '
+                  'fit popSize')
+        self.numElite = numElite
+        self.numRecomb = numRecomb
+        self.numMut = numMut
+        self.numRand = numRand
+        self._popSize = popSize
+
+    @property
+    def popSize(self):
+        return self._popSize
+    @popSize.setter
+    def popSize(self,val):
+        self._pop_setup(val)

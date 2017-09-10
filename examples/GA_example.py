@@ -128,11 +128,12 @@ fitness1 = fitness_fn(fn1,-1,1)
 
 #myfis = GFS(init=[5,(1<<4)+(1<<0),3,0],inRange=[-13,13],outRange=[-5,120])
 #myfis._points = 1001
-myfis = GFS([5,5],5)#,in_ranges=[(-1,1)],out_ranges=[(-1,1)])
+myfis = GFS([5],5,in_ranges=[(-1,1)],out_ranges=[(-1,1)])
 
 #sim1(myfis.randomize())
+myfis.randomize()
 
-myga = GA(genMax=100)
+myga = GA(genMax=100,cpus=1)
 myga.add_prototype(myfis)
 #p = Pool(4)
 #results = p.map_async(sim1,myga.populations[0])
@@ -140,18 +141,18 @@ myga.add_prototype(myfis)
 #p.close()
 #p.join()
 mod_fit = model_fitness()
-myga.add_fitness(mod_fit)
+myga.add_fitness(fitness1)
 best = myga.run()
 
 
-#x = np.linspace(-1,1,1000)
-##ya = fn1(x)
-#ya = map(fn1,x)
-#yf = map(best.evalfis,x)
-##yf = [myfis.evalfis(xx) for xx in x]
-#
-#
-#
-#plt.plot(x,ya,'b',x,yf,'g--')
-#plt.legend(['fn',"Fuzzy Approx"],loc='best')
-#plt.show()
+x = np.linspace(-1,1,1000)
+#ya = fn1(x)
+ya = map(fn1,x)
+yf = map(best.evalfis,x)
+#yf = [myfis.evalfis(xx) for xx in x]
+
+
+
+plt.plot(x,ya,'b',x,yf,'g--')
+plt.legend(['fn',"Fuzzy Approx"],loc='best')
+plt.show()

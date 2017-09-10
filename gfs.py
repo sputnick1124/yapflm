@@ -51,6 +51,9 @@ class GFS(FIS):
                 for self_mf,other_mf in zip(self_outp.mf,other_outp.mf):
                     self_mf.params = other_mf.params[:]
             self.rule.rules = deepcopy(fis.rule)
+            self.rule.consequents = []
+            for rule in self.rule.rules:
+                self.rule.consequents.append(rule.consequent[:])
 
     def init_vars(self):
         if self.in_ranges is None:
@@ -245,11 +248,16 @@ class GenFuzzyMF(MF):
             if not valid_tri(self.params):
                 print('OUTPUT:')
                 print(self.params)
+        try:
+            self.check()
+        except ValueError as e:
+            print(e)
+            raise ValueError("Randomize failed")
 
     def crossover(self,other):
         blended = random #function alias
         uniform = lambda:randint(0,1) #function alias
-        selection = uniform #method selector
+        selection = random #method selector
         if self.buckets[0] is not None:
             c1,c2 = [],[]
             for p1,p2,b in zip(self.params,other.params,self.buckets):
@@ -295,6 +303,14 @@ class GenFuzzyMF(MF):
                 print(c1,c2)
         return c1,c2
 
+    def check(self):
+        for p,b in zip(self.params,self.buckets):
+            try:
+                assert(b[0] <= p <= b[1])
+            except AssertionError:
+                raise ValueError(
+                    "InvalidParams:\nparams: {0}\nbuckets: {1}".format(self.params,self.buckets))
+
 class GenFuzzyRuleBase(object):
     def __init__(self,in_mfs=None,out_mfs=None,antecedents=None,consequents=None):
         self.rules = []
@@ -316,7 +332,13 @@ class GenFuzzyRuleBase(object):
 
     def __getitem__(self,key):
         return self.rules[key]
-    
+
+    def __eq__(self,other):
+        return self.__dict__ == other.__dict__
+
+    def __ne__(self,other):
+        return not self == other
+
     def append(self,item):
         self.rules.append(item)
 
